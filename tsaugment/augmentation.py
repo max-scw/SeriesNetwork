@@ -22,7 +22,7 @@ def add_white_noise(
     return signal, label
 
 
-def elementwise_amplitude_scaling(
+def elementwise_scaling(
         signal: Union[np.ndarray, pd.DataFrame],
         label: pd.DataFrame,
         amplitude_percent: float = 0.02,
@@ -88,6 +88,7 @@ def smooth_signal(
         max_window_size: int = -1,
         p: float = 0.5
 ) -> Tuple[Union[np.ndarray, pd.DataFrame], pd.DataFrame]:
+    """applies different smoothing filter to the signal. This is essentially a convolution."""
     if random.random() < p:  # chance
         # window size
         if max_window_size < 3:
@@ -117,13 +118,14 @@ def smooth_signal(
     return signal, label
 
 
-def random_scale(
+def uniform_scale(
         signal: Union[np.ndarray, pd.DataFrame],
         label: pd.DataFrame,
         scale: Tuple[float, float] = (0.9, 1.1),
         p: float = 0.5,
         always_apply: bool = False
 ) -> Tuple[Union[np.ndarray, pd.DataFrame], pd.DataFrame]:
+    """random, uniform scaling of the signal amplitude"""
     if random.random() < p or always_apply:  # chance
         amplitude = (1 + (max(scale)/min(scale) - 1)) * randpm1()
         signal *= amplitude
@@ -144,13 +146,21 @@ def random_shift(
 
         # adjust labels
         keys = get_label_keys_to_adjust(keys, label)
-        label[keys] = offset - label[keys]
-        # FIXME: saturate?
+        label_new = label[keys] - offset
+
+        # assign
+        if np.all(label_new >= 0) and np.all(label_new <= len(sig)):
+            # format output
+            if isinstance(signal, pd.Series):
+                signal = pd.Series(sig, index=signal.index, name=signal.name)
+            elif isinstance(signal, pd.DataFrame):
+                signal = pd.DataFrame(sig, index=signal.index, columns=signal.columns)
+            label[keys] = label_new
 
     return signal, label
 
 
-def shift_label():
+def shift_sections():
     pass
 
 
@@ -161,4 +171,5 @@ def shift_label():
 
 # TODO: different noise (e.g. by frequency)
 # TODO: jitter: move labels left/right
+# TODO: shift entire signal
 # TODO: mosaik => cut sections
