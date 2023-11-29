@@ -6,6 +6,9 @@ from typing import Union, Tuple, List, Any
 
 from .utils import randpm1
 
+from matplotlib import pyplot as plt
+
+
 def len_signal(signal: Union[np.ndarray, pd.DataFrame]) -> int:
     if isinstance(signal, (pd.Series, pd.DataFrame)) and "int" in signal.index.dtype.name:
         return signal.index[-1]
@@ -71,46 +74,51 @@ def shift_signal(
 ) -> Tuple[Union[np.ndarray, pd.DataFrame], int]:
     # process input
     if isinstance(max_shift, (int, float)):
-        max_shift_ = (max_shift, max_shift)
+        max_shift_ = (0, max_shift)
     else:
         max_shift_ = tuple(max_shift)
 
-    # positive values only
-    max_shift_ = tuple(abs(el) for el in max_shift_)
+    # # positive values only
+    # max_shift_ = tuple(abs(el) for el in max_shift_)
     # scale if necessary
-    max_shift_ = tuple(el * len_signal(signal) if el <= 1 else el for el in max_shift_)
+    max_shift_ = tuple(el * len_signal(signal) if abs(el) <= 1 else el for el in max_shift_)
 
     # shift
-    if random.random() <= 0.5:
-        # left
-        max_shift = -max_shift_[0]
-    else:
-        # right
-        max_shift = -max_shift_[1]
-    shift = round(max_shift * randpm1())
+    shift = np.random.randint(low=min(max_shift_), high=max(max_shift_)) if (max_shift_[1] - max_shift_[0]) > 1 else max_shift_[0]
+    # negative = left shift
+    # positive = right shift
+    # print(f"DEBUG: [shift_signal()] shift={shift}")
 
     # shift index
-    idx = np.mod(list(range(shift, len(signal) + shift)), len(signal))
+    idx = np.mod(list(range(-shift, len(signal) - shift)), len(signal))
 
     if not wrap:
-        if shift > 0:
-            for i, el in enumerate(idx):
-                if el == 0:
+        if shift > 0:  # right shift
+            for i in range(len(idx)):
+                if idx[i] == 0:
                     break
                 else:
                     idx[i] = 0
-        else:
-            for i in range(len(idx), 0, -1):
-                if idx[i] == len(idx):
+        elif shift < 0:  # left shift
+            # saturate
+            for i in range(len(idx) - 1, 0, -1):
+                if idx[i] == len(idx) - 1:
                     break
                 else:
-                    idx[i] = len(idx)
+                    idx[i] = len(idx) - 1
 
-    return signal[idx], shift
+
+    return np.asarray(signal)[idx], shift
 
 
 
 
 if __name__ == "__main__":
-    sig = np.arange(10)
-    smooth(sig, 5, "hanning")
+    # sig = np.arange(10)
+    # smooth(sig, 5, "hanning")
+
+    sig = [1] * 10 + [3] * 5 + [2] * 15
+    sig2, s = shift_signal(sig, max_shift=(0, 10), wrap=False)
+    plt.plot(sig)
+    plt.plot(sig2)
+    plt.show()

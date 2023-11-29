@@ -19,16 +19,16 @@ from .augmentation import (
 ALWAYS = 1.1
 
 class MyTestCase(unittest.TestCase):
-
+    cases = None
     @staticmethod
     def reset_seed():
         SEED = 42
 
-        np.random.random(SEED)
+        np.random.seed(SEED)
         random.seed(SEED)
 
-    def case1(self) -> Tuple[Tuple[Union[pd.Series, pd.DataFrame], Union[pd.Series, pd.DataFrame]], Dict[str, Dict[str, Union[pd.Series, pd.DataFrame]]]]:
-        signal = pd.Series(list(np.arange(10)) * 3)
+    def _case1(self) -> Tuple[Tuple[Union[pd.Series, pd.DataFrame], Union[pd.Series, pd.DataFrame]], Dict[str, Dict[str, Union[pd.Series, pd.DataFrame]]]]:
+        signal = pd.Series(list(range(10)) * 3)
         label = pd.DataFrame(
             ({"class": 0, "start": 9, "end": 10},
              {"class": 1, "start": 19, "end": 20},
@@ -53,17 +53,39 @@ class MyTestCase(unittest.TestCase):
 
         # no randomness
         ground_truth["random_shift(max_shift=(4, 4), wrap=False)"] = {
-            "signal": pd.Series(list(np.arange(4, 10)) + list(np.arange(10)) * 2 + [9] * 4),
+            "signal": pd.Series([0] * 4 + list(np.arange(10)) * 2 + list(range(6))),
             "label": pd.DataFrame(
-                ({"class": 0, "start": 5, "end": 6},
-                 {"class": 1, "start": 15, "end": 16},
-                 {"class": 2, "start": 25, "end": 26}
+                ({"class": 0, "start": 13, "end": 14},
+                 {"class": 1, "start": 23, "end": 24},
+                 # {"class": 2, "start": 3, "end": 4}
                  ))
+        }
+        # left shift with wrap
+        self.reset_seed()
+        shift = np.random.randint(low=-4, high=0)
+        ground_truth["random_shift(max_shift=(-4, 0), wrap=True)"] = {
+            "signal": pd.Series(list(range(abs(shift), 10)) + list(range(10)) * 2 + list(range(abs(shift)))),
+            "label": pd.DataFrame(
+            ({"class": 0, "start": 9 + shift, "end": 10 + shift},
+             {"class": 1, "start": 19 + shift, "end": 20 + shift},
+             {"class": 2, "start": 29 + shift, "end": 30 + shift}
+             ))
+        }
+        # right shift with wrap
+        self.reset_seed()
+        shift = np.random.randint(low=0, high=5)
+        ground_truth["random_shift(max_shift=(0, 5), wrap=True)"] = {
+            "signal": pd.Series(list(range(10 - shift, 10)) + list(range(10)) * 2 + list(range(10 - shift))),
+            "label": pd.DataFrame(
+            ({"class": 0, "start": 9 + shift, "end": 10 + shift},
+             {"class": 1, "start": 19 + shift, "end": 20 + shift},
+             {"class": 2, "start": (29 + shift) % len(signal), "end": (30 + shift) % len(signal)}
+             ))
         }
 
         return (signal, label), ground_truth
 
-    def case2(self) -> Tuple[Tuple[Union[pd.Series, pd.DataFrame], Union[pd.Series, pd.DataFrame]], Dict[str, Dict[str, Union[pd.Series, pd.DataFrame]]]]:
+    def _case2(self) -> Tuple[Tuple[Union[pd.Series, pd.DataFrame], Union[pd.Series, pd.DataFrame]], Dict[str, Dict[str, Union[pd.Series, pd.DataFrame]]]]:
         signal = pd.Series([1] * 5 + [5] * 3 + [0] * 10 + [4] * 5)
         label = pd.DataFrame(
             ({"class": 42, "start": 5, "end": 8},
@@ -86,10 +108,31 @@ class MyTestCase(unittest.TestCase):
         }
         # no randomness
         ground_truth["random_shift(max_shift=(4, 4), wrap=False)"] = {
-            "signal": pd.Series([1] * (5 - 4) + [5] * 3 + [0] * 10 + [4] * (5 + 4)),
+            "signal": pd.Series([1] * (5 + 4) + [5] * 3 + [0] * 10 + [4] * (5 - 4)),
             "label": pd.DataFrame(
-                ({"class": 42, "start": 1, "end": 4},
-                 {"class": 1, "start": 14, "end": 19}
+                ({"class": 42, "start": 9, "end": 12},
+                 # {"class": 1, "start": 22, "end": 4}
+                 ))
+        }
+        # left shift with wrap
+        self.reset_seed()
+        shift = np.random.randint(low=-4, high=0)
+        ground_truth["random_shift(max_shift=(-4, 0), wrap=True)"] = {
+            "signal": pd.Series([1] * (5 + shift) + [5] * 3 + [0] * 10 + [4] * 5 + [1] * abs(shift)),
+            "label": pd.DataFrame(
+                ({"class": 42, "start": 5 + shift, "end": 8 + shift},
+                 {"class": 1, "start": 18 + shift, "end": 23 + shift}
+                 ))
+        }
+        # right shift with wrap
+        self.reset_seed()
+        shift = np.random.randint(low=0, high=5)
+        print(f"DEBUG: [_case2()] shift={shift}")
+        ground_truth["random_shift(max_shift=(0, 5), wrap=True)"] = {
+            "signal": pd.Series([4] * shift + [1] * 5 + [5] * 3 + [0] * 10 + [4] * (5 - shift)),
+            "label": pd.DataFrame(
+                ({"class": 42, "start": 5 + shift, "end": 8 + shift},
+                 {"class": 1, "start": (18 + shift) % len(signal), "end": (23 + shift) % len(signal)}
                  ))
         }
 
@@ -97,26 +140,30 @@ class MyTestCase(unittest.TestCase):
 
         return (signal, label), ground_truth
 
-    def get_cases(self):
-        return [self.case1(), self.case2()]
+    def get_cases(self) -> List[tuple]:
+        if self.cases is None:
+            self.cases = [self._case1(), self._case2()]
+        return self.cases
 
     def test_reverse_signal(self):
         for (signal, label), ground_truth in self.get_cases():
             # apply function
             sig, lbl = reverse_signal(signal, label, p=ALWAYS)
             # assert signal
-            np.testing.assert_array_equal(sig, ground_truth["reverse_signal"]["signal"])
+            key = "reverse_signal"
+            np.testing.assert_array_equal(sig, ground_truth[key]["signal"])
             # assert label
-            np.testing.assert_array_equal(lbl, ground_truth["reverse_signal"]["label"])
+            np.testing.assert_array_equal(lbl, ground_truth[key]["label"])
 
     def test_invert_signal_amplitude(self):
         for (signal, label), ground_truth in self.get_cases():
             # apply function
             sig, lbl = invert_signal_amplitude(signal, label, p=ALWAYS)
             # assert signal
-            np.testing.assert_array_equal(sig, ground_truth["invert_signal_amplitude"]["signal"])
+            key = "invert_signal_amplitude"
+            np.testing.assert_array_equal(sig, ground_truth[key]["signal"])
             # assert label
-            np.testing.assert_array_equal(lbl, ground_truth["invert_signal_amplitude"]["label"])
+            np.testing.assert_array_equal(lbl, ground_truth[key]["label"])
 
     def test_add_white_noise_range(self):
         scale = 0.05
@@ -181,15 +228,32 @@ class MyTestCase(unittest.TestCase):
             self.assertGreaterEqual(np.min(lbl.to_numpy()), 0)
             self.assertGreaterEqual(np.max(lbl.to_numpy()), np.max(signal))
 
-    def test_random_shift(self):
+    def test_random_shift_1(self):
         for (signal, label), ground_truth in self.get_cases():
             # apply function
             sig, lbl = random_shift(signal, label, max_shift=(4, 4), wrap=False, p=ALWAYS)
             # assert signal
-            np.testing.assert_array_equal(sig, ground_truth["random_shift(max_shift=(4, 4), wrap=False)"]["signal"])
+            key = "random_shift(max_shift=(4, 4), wrap=False)"
+            np.testing.assert_array_equal(sig, ground_truth[key]["signal"])
             # assert label
-            np.testing.assert_array_equal(lbl, ground_truth["random_shift(max_shift=(4, 4), wrap=False)"]["label"])
+            np.testing.assert_array_equal(lbl, ground_truth[key]["label"])
 
+    def test_random_shift_2(self):
+        cases = [
+            (-4, 0),
+            # (0, 5)
+        ]
+
+        for shift_range in cases:
+            for (signal, label), ground_truth in self.get_cases():
+                self.reset_seed()
+                # apply function
+                sig, lbl = random_shift(signal, label, max_shift=shift_range, wrap=True, p=ALWAYS)
+                # assert signal
+                key = f"random_shift(max_shift={shift_range}, wrap=True)"
+                np.testing.assert_array_equal(sig, ground_truth[key]["signal"])
+                # assert label
+                np.testing.assert_array_equal(lbl, ground_truth[key]["label"])
 
 if __name__ == "__main__":
     unittest.main()

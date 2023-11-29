@@ -142,11 +142,20 @@ def random_shift(
         p: float = 0.5,
 ) -> Tuple[Union[np.ndarray, pd.DataFrame], pd.DataFrame]:
     if random.random() < p:  # chance
-        sig, offset = shift_signal(signal, max_shift=max_shift, wrap=wrap)
+        sig, shift = shift_signal(signal, max_shift=max_shift, wrap=wrap)
 
         # adjust labels
         keys = get_label_keys_to_adjust(keys, label)
-        label_new = label[keys] - offset
+        label_new = label[keys] + shift
+
+        if not wrap:
+            if shift > 0:
+                label_new = label_new[(label_new < len(sig)).all(axis=1)]
+            elif shift < 0:
+                label_new = label_new[(label_new > 0).all(axis=1)]
+        else:
+            label_new %= len(sig)
+
 
         # assign
         if np.all(label_new >= 0) and np.all(label_new <= len(sig)):
@@ -156,6 +165,9 @@ def random_shift(
             elif isinstance(signal, pd.DataFrame):
                 signal = pd.DataFrame(sig, index=signal.index, columns=signal.columns)
             label[keys] = label_new
+            label = label.iloc[label_new.index, :]
+        else:
+            raise Exception
 
     return signal, label
 
